@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { LoginForm } from './LoginForm';
 import { RegisterForm } from './RegisterForm';
@@ -15,6 +15,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   defaultMode = 'login' 
 }) => {
   const [mode, setMode] = useState(defaultMode);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(defaultMode);
+    }
+  }, [defaultMode, isOpen]);
 
   const handleSuccess = () => {
     onClose();
