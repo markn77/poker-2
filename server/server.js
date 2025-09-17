@@ -13,6 +13,36 @@ app.use(cors({
 
 app.use(bodyParser.json());
 
+// Login route
+app.post('/login', async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        const result = await pool.query(
+            'SELECT * FROM users WHERE email = $1 AND password = $2',
+            [email, password] // TODO: hash passwords and compare hashes in production
+        );
+
+        if (result.rows.length > 0) {
+            const user = result.rows[0];
+            res.json({ 
+                success: true, 
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    created_at: user.created_at
+                }
+            });
+        } else {
+            res.status(401).json({ success: false, error: 'Invalid email or password' });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Sign-up route
 app.post('/signup', async (req, res) => {
     const { username, email, password } = req.body;
@@ -25,7 +55,14 @@ app.post('/signup', async (req, res) => {
         res.json({ success: true, user: result.rows[0] });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ success: false, error: err.message });
+        if (err.code === '23505') { // Unique constraint violation
+            res.status(400).json({ 
+                success: false, 
+                error: 'Username or email already exists' 
+            });
+        } else {
+            res.status(500).json({ success: false, error: err.message });
+        }
     }
 });
 
