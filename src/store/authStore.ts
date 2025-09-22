@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { AuthState, LoginCredentials, RegisterCredentials } from '../types/auth';
+import { AuthService } from '../services/api/auth';
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
@@ -10,31 +11,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (credentials: LoginCredentials) => {
     set({ isLoading: true, error: null });
     
-    try {
-      // TODO: Replace with actual API call
-      console.log('Login attempt:', credentials);
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock successful login
-      const mockUser = {
-        id: '1',
-        email: credentials.email,
-        username: 'TestUser',
-        createdAt: new Date().toISOString()
-      };
-      
+    const response = await AuthService.login(credentials);
+    
+    if (response.success && response.user) {
       set({ 
-        user: mockUser, 
+        user: response.user, 
         isAuthenticated: true, 
         isLoading: false,
         error: null 
       });
-      
-    } catch (error) {
+    } else {
       set({ 
-        error: 'Login failed. Please check your credentials.', 
+        error: response.error || 'Login failed', 
         isLoading: false 
       });
     }
@@ -43,46 +31,64 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (credentials: RegisterCredentials) => {
     set({ isLoading: true, error: null });
     
-    try {
-      if (credentials.password !== credentials.confirmPassword) {
-        throw new Error('Passwords do not match');
-      }
-      
-      // TODO: Replace with actual API call
-      console.log('Register attempt:', credentials);
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock successful registration
-      const mockUser = {
-        id: '1',
-        email: credentials.email,
-        username: credentials.username,
-        createdAt: new Date().toISOString()
-      };
-      
+    const response = await AuthService.register(credentials);
+    
+    if (response.success && response.user) {
       set({ 
-        user: mockUser, 
+        user: response.user, 
         isAuthenticated: true, 
         isLoading: false,
         error: null 
       });
-      
-    } catch (error) {
+    } else {
       set({ 
-        error: error instanceof Error ? error.message : 'Registration failed', 
+        error: response.error || 'Registration failed', 
         isLoading: false 
       });
     }
   },
 
-  logout: () => {
+  logout: async () => {
+    set({ isLoading: true });
+    await AuthService.logout();
     set({ 
       user: null, 
       isAuthenticated: false, 
+      isLoading: false,
       error: null 
     });
+  },
+
+  // Initialize auth state from stored token on app start
+  initializeAuth: async () => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      const user = await AuthService.getCurrentUser();
+      if (user) {
+        set({
+          user,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null
+        });
+      } else {
+        set({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: null
+        });
+      }
+    } catch (error) {
+      console.error('Auth initialization error:', error);
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null
+      });
+    }
   },
 
   clearError: () => {

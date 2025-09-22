@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { UserService, UserProfile } from '../services/api/user';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 
@@ -8,10 +9,33 @@ export const Profile: React.FC = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [formData, setFormData] = useState({
     username: user?.username || '',
     email: user?.email || '',
   });
+
+  // Load user profile with stats on component mount
+  useEffect(() => {
+    const loadProfile = async () => {
+      setIsLoading(true);
+      const response = await UserService.getProfile();
+      if (response.success && response.user) {
+        setUserProfile(response.user);
+        setFormData({
+          username: response.user.username,
+          email: response.user.email,
+        });
+      } else {
+        setError(response.error || 'Failed to load profile');
+      }
+      setIsLoading(false);
+    };
+
+    loadProfile();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
@@ -20,23 +44,49 @@ export const Profile: React.FC = () => {
     }));
   };
 
-  const handleSave = () => {
-    // TODO: Implement profile update logic
-    console.log('Saving profile:', formData);
-    setIsEditing(false);
+  const handleSave = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await UserService.updateProfile(formData);
+      
+      if (response.success && response.user) {
+        setUserProfile(response.user);
+        setIsEditing(false);
+        // You might also want to update the auth store with the new user info
+      } else {
+        setError(response.error || 'Failed to update profile');
+      }
+    } catch (err) {
+      setError('An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
     setFormData({
-      username: user?.username || '',
-      email: user?.email || '',
+      username: userProfile?.username || user?.username || '',
+      email: userProfile?.email || user?.email || '',
     });
     setIsEditing(false);
+    setError(null);
   };
 
   const goBack = () => {
     navigate('/dashboard');
   };
+
+  if (isLoading && !userProfile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-poker-green flex items-center justify-center">
+        <div className="text-white text-xl">Loading profile...</div>
+      </div>
+    );
+  }
+
+  const displayUser = userProfile || user;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-poker-green">
@@ -66,14 +116,21 @@ export const Profile: React.FC = () => {
           <div className="flex items-center mb-8">
             <div className="w-20 h-20 bg-poker-gold rounded-full flex items-center justify-center mr-6">
               <span className="text-gray-900 font-bold text-2xl">
-                {user?.username.charAt(0).toUpperCase()}
+                {displayUser?.username.charAt(0).toUpperCase()}
               </span>
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-white">{user?.username}</h1>
-              <p className="text-gray-400">Member since {new Date(user?.createdAt || '').toLocaleDateString()}</p>
+              <h1 className="text-3xl font-bold text-white">{displayUser?.username}</h1>
+              <p className="text-gray-400">Member since {new Date((userProfile?.created_at || user?.createdAt) || '').toLocaleDateString()}</p>
             </div>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded mb-6">
+              {error}
+            </div>
+          )}
 
           {/* Profile Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -112,10 +169,20 @@ export const Profile: React.FC = () => {
 
                 {isEditing && (
                   <div className="flex space-x-4 pt-4">
-                    <Button onClick={handleSave} className="flex-1">
-                      Save Changes
+                    <Button 
+                      onClick={handleSave} 
+                      className="flex-1"
+                      isLoading={isLoading}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? 'Saving...' : 'Save Changes'}
                     </Button>
-                    <Button onClick={handleCancel} variant="secondary" className="flex-1">
+                    <Button 
+                      onClick={handleCancel} 
+                      variant="secondary" 
+                      className="flex-1"
+                      disabled={isLoading}
+                    >
                       Cancel
                     </Button>
                   </div>
@@ -130,28 +197,42 @@ export const Profile: React.FC = () => {
                 <div className="bg-gray-900 rounded-lg p-4">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Total Games</span>
-                    <span className="text-white font-semibold">0</span>
+                    <span className="text-white font-semibold">{userProfile?.games_played || 0}</span>
                   </div>
                 </div>
                 
                 <div className="bg-gray-900 rounded-lg p-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Games Won</span>
-                    <span className="text-green-400 font-semibold">0</span>
+                    <span className="text-gray-400">Hands Won</span>
+                    <span className="text-green-400 font-semibold">{userProfile?.hands_won || 0}</span>
                   </div>
                 </div>
                 
                 <div className="bg-gray-900 rounded-lg p-4">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Win Rate</span>
-                    <span className="text-poker-gold font-semibold">0%</span>
+                    <span className="text-poker-gold font-semibold">{userProfile?.win_rate || 0}%</span>
                   </div>
                 </div>
                 
                 <div className="bg-gray-900 rounded-lg p-4">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Total Winnings</span>
-                    <span className="text-white font-semibold">$0</span>
+                    <span className="text-white font-semibold">${userProfile?.total_winnings || 0}</span>
+                  </div>
+                </div>
+
+                <div className="bg-gray-900 rounded-lg p-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Hands Played</span>
+                    <span className="text-white font-semibold">{userProfile?.hands_played || 0}</span>
+                  </div>
+                </div>
+
+                <div className="bg-gray-900 rounded-lg p-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Avg Pot Won</span>
+                    <span className="text-white font-semibold">${userProfile?.avg_pot_won || 0}</span>
                   </div>
                 </div>
               </div>
@@ -162,9 +243,15 @@ export const Profile: React.FC = () => {
           <div className="mt-12">
             <h2 className="text-xl font-semibold text-white mb-6">Recent Activity</h2>
             <div className="bg-gray-900 rounded-lg p-6">
-              <p className="text-gray-400 text-center">
-                No recent activity. Join a game to start playing!
-              </p>
+              {userProfile?.last_played ? (
+                <p className="text-gray-400">
+                  Last played: {new Date(userProfile.last_played).toLocaleDateString()}
+                </p>
+              ) : (
+                <p className="text-gray-400 text-center">
+                  No recent activity. Join a game to start playing!
+                </p>
+              )}
             </div>
           </div>
 

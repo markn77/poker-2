@@ -19,31 +19,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // kept the existing store/register logic
     await register(formData);
-    if (onSuccess) onSuccess();
-
-    //sends to PostgreSQL backend
-    try {
-      const response = await fetch('http://localhost:3001/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: formData.username,
-          email: formData.email,
-          password: formData.password, // in production: hash this
-        }),
-      });
-
-      const data = await response.json();
-      if (!data.success) {
-        console.error('Backend signup error:', data.error);
-      } else {
-        console.log('User added to PostgreSQL:', data.user);
-      }
-    } catch (err) {
-      console.error('Error connecting to backend:', err);
+    
+    const { isAuthenticated } = useAuthStore.getState();
+    if (isAuthenticated && onSuccess) {
+      onSuccess();
     }
   };
 
