@@ -1,10 +1,9 @@
-// server/controllers/tableController.js - CLEAN VERSION
+// server/controllers/tableController.js - WITH GAME ACTIONS
 console.log('🔧 DEBUG: Loading tableController.js');
 const TableService = require('../services/tableService');
 
 console.log('🔧 DEBUG: TableService loaded:', typeof TableService);
 console.log('🔧 DEBUG: TableService.getActiveTables:', typeof TableService.getActiveTables);
-
 
 class TableController {
   // Get all active tables for dashboard
@@ -73,9 +72,17 @@ class TableController {
       }
       
       // Check if user is player or spectator
-      const userId = req.user.userId;
+      const userId = req.user.userId.toString();
       const isPlayer = table.players.some(p => p.id === userId);
       const isSpectator = table.spectators.some(s => s.id === userId);
+
+      console.log('=== TABLE DEBUG ===');
+      console.log('table.currentPlayer:', table.currentPlayer);
+      console.log('requesting userId:', userId);
+      console.log('table.players:', table.players.map(p => ({ id: p.id, username: p.username })));
+      console.log('table.gamePhase:', table.gamePhase);
+      console.log('table.status:', table.status);
+      console.log('==================');
       
       const response = {
         id: table.id,
@@ -104,8 +111,11 @@ class TableController {
           isActive: player.isActive,
           hasActed: player.hasActed,
           action: player.action,
+          currentBet: player.currentBet,
+          isFolded: player.isFolded,
+          isAllIn: player.isAllIn,
           // Only show cards to the player themselves
-          cards: player.id === userId ? player.cards : []
+          cards: player.id === userId ? (player.cards || []) : []
         })),
         spectators: table.spectators.map(spec => ({
           id: spec.id,
@@ -113,12 +123,15 @@ class TableController {
           avatar_url: spec.avatar_url,
           joinedAt: spec.joinedAt
         })),
-        communityCards: table.communityCards,
+        communityCards: table.communityCards || [],
         userRole: isPlayer ? 'player' : (isSpectator ? 'spectator' : 'none'),
         createdAt: table.createdAt,
         lastActivity: table.lastActivity
       };
-      
+
+      console.log('=== RESPONSE DEBUG ===');
+      console.log('response.currentPlayer:', response.currentPlayer);
+      console.log('====================');
       res.json({
         success: true,
         table: response
@@ -187,14 +200,14 @@ class TableController {
       }
       
       const result = TableService.joinAsPlayer(
-        tableId, 
-        {
-          id: req.user.userId,
-          username: req.user.username,
-          avatar_url: req.user.avatar_url
-        },
-        buyInAmount
-      );
+      tableId, 
+      {
+        id: req.user.userId.toString(), // Ensure string
+        username: req.user.username,
+        avatar_url: req.user.avatar_url
+      },
+      buyInAmount
+    );
       
       if (!result.success) {
         return res.status(400).json({
@@ -220,6 +233,69 @@ class TableController {
       res.status(500).json({
         success: false,
         error: 'Failed to join table as player'
+      });
+    }
+  }
+
+  // Player game action (fold, call, raise, check, all-in)
+  static async playerAction(req, res) {
+    try {
+      const { tableId } = req.params;
+      const { action, amount } = req.body;
+      
+      console.log('=== TableController.playerAction called ===', { 
+        tableId, 
+        userId: req.user.userId,
+        action,
+        amount
+      });
+      
+      if (!action) {
+        return res.status(400).json({
+          success: false,
+          error: 'Action is required'
+        });
+      }
+      
+      const validActions = ['fold', 'call', 'raise', 'check', 'all-in'];
+      if (!validActions.includes(action)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid action'
+        });
+      }
+      
+      if (action === 'raise' && (!amount || amount <= 0)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Raise amount is required'
+        });
+      }
+      
+      const result = TableService.playerAction(
+        tableId,
+        req.user.userId.toString(), // Ensure string
+        action,
+        amount
+      );
+      
+      if (!result.success) {
+        return res.status(400).json({
+          success: false,
+          error: result.error
+        });
+      }
+      
+      res.json({
+        success: true,
+        message: `Action ${action} successful`,
+        gameState: result.gameState
+      });
+    } catch (error) {
+      console.error('Player action error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to process player action'
       });
     }
   }
@@ -271,6 +347,34 @@ class TableController {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch table templates'
+      });
+    }
+  }
+
+  // Get game state for a table
+  static async getGameState(req, res) {
+    try {
+      const { tableId } = req.params;
+      console.log('=== TableController.getGameState called ===', { tableId });
+      
+      const gameState = TableService.getGameState(tableId);
+      
+      if (!gameState) {
+        return res.status(404).json({
+          success: false,
+          error: 'No active game found'
+        });
+      }
+      
+      res.json({
+        success: true,
+        gameState
+      });
+    } catch (error) {
+      console.error('Get game state error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch game state'
       });
     }
   }

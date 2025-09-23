@@ -1,4 +1,4 @@
-// src/pages/TableView.tsx - REAL VERSION WITH REACT ROUTER
+// src/pages/TableView.tsx - FINAL VERSION WITH ACTIONS + RAISE MODAL
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
@@ -125,6 +125,11 @@ export const TableView: React.FC = () => {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
 
+  // NEW: action state
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [raiseAmount, setRaiseAmount] = useState(table?.bigBlind || 20);
+  const [showRaiseModal, setShowRaiseModal] = useState(false);
+
   // Load table data
   useEffect(() => {
     if (!tableId) {
@@ -138,9 +143,8 @@ export const TableView: React.FC = () => {
     return () => clearInterval(interval);
   }, [tableId, navigate]);
 
-  const loadTable = async () => {
+  const loadTable = React.useCallback(async () => {
     if (!tableId) return;
-
     try {
       const response = await TableService.getTable(tableId);
       if (response.success && response.table) {
@@ -155,7 +159,8 @@ export const TableView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [tableId]);
+
 
   const handleJoinAsPlayer = async (buyInAmount: number) => {
     if (!tableId) return;
@@ -193,6 +198,37 @@ export const TableView: React.FC = () => {
     }
   };
 
+  // NEW: player action handlers
+  const handlePlayerAction = async (action: string, amount?: number) => {
+    if (!tableId || !table) return;
+    
+    setIsActionLoading(true);
+    try {
+      console.log('Making action:', action, amount);
+      const response = await TableService.playerAction(tableId, action, amount);
+      if (response.success) {
+        await loadTable();
+        setError(null);
+      } else {
+        setError(response.error || `Failed to ${action}`);
+      }
+    } catch (err) {
+      setError(`Network error during ${action}`);
+      console.error(`Error during ${action}:`, err);
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleFold = () => handlePlayerAction('fold');
+  const handleCheck = () => handlePlayerAction('check');
+  const handleCall = () => handlePlayerAction('call');
+  const handleAllIn = () => handlePlayerAction('all-in');
+  const handleRaise = async (amount: number) => {
+    setShowRaiseModal(false);
+    await handlePlayerAction('raise', amount);
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -202,9 +238,8 @@ export const TableView: React.FC = () => {
   };
 
   const getPlayerPosition = (position: number, maxPlayers: number) => {
-    // Calculate position around circular table
     const angle = (position / maxPlayers) * 360;
-    const radius = 45; // Percentage from center
+    const radius = 45;
     const x = 50 + radius * Math.cos((angle - 90) * Math.PI / 180);
     const y = 50 + radius * Math.sin((angle - 90) * Math.PI / 180);
     return { x, y };
@@ -237,6 +272,47 @@ export const TableView: React.FC = () => {
   const isPlayer = table.userRole === 'player';
   const isSpectator = table.userRole === 'spectator';
   const canJoinAsPlayer = !isPlayer && table.players.length < table.maxPlayers;
+
+  console.log('=== TURN DEBUG ===');
+  console.log('table.currentPlayer:', table.currentPlayer);
+  console.log('user?.id:', user?.id);
+  console.log('table.players:', table.players.map(p => ({ id: p.id, username: p.username })));
+  console.log('currentPlayerIndex from backend would be player:', table.players.find(p => p.id === table.currentPlayer));
+  console.log('isMyTurn calculation:', table.currentPlayer === user?.id);
+  console.log('==================');
+  console.log('=== FRONTEND TURN DEBUG ===');
+  console.log('table:', table);
+  console.log('table.currentPlayer:', table.currentPlayer);
+  console.log('user:', user);
+  console.log('user?.id:', user?.id);
+  console.log('table.players:', table.players);
+  console.log('table.gamePhase:', table.gamePhase);
+  console.log('table.status:', table.status);
+
+
+  // NEW: turn and betting logic
+  const isMyTurn = String(table.currentPlayer) === String(user?.id); // <-- FIX HERE
+  const currentPlayer = table.players.find(p => String(p.id) === String(table.currentPlayer));
+
+  console.log('currentPlayer found:', currentPlayer);
+  console.log('isMyTurn calculation:', isMyTurn);
+  //console.log('myPlayer found:', myPlayer);
+  console.log('==============================');
+  // Also update the display logic:
+  <div className="text-white mb-2">
+    {isMyTurn ? (
+      <span className="text-green-400 font-bold">Your Turn</span>
+    ) : (
+      <span className="text-gray-400">
+        Waiting for {currentPlayer?.username || 'other player'}
+      </span>
+    )}
+  </div>
+  const myPlayer = table.players.find(p => String(p.id) === String(user?.id));
+  const currentBet = table.players.reduce((max, p) => Math.max(max, p.currentBet || 0), 0);
+  const callAmount = currentBet - (myPlayer?.currentBet || 0);
+  const canCheck = callAmount === 0;
+  const minRaise = Math.max(table.bigBlind, currentBet * 2);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
@@ -325,7 +401,6 @@ export const TableView: React.FC = () => {
                     ))
                   ) : null}
                   
-                  {/* Placeholder cards for remaining community cards */}
                   {Array.from({ length: 5 - (table.communityCards?.length || 0) }).map((_, index) => (
                     <div
                       key={`placeholder-${index}`}
@@ -347,7 +422,6 @@ export const TableView: React.FC = () => {
                     style={{ left: `${x}%`, top: `${y}%` }}
                   >
                     <div className={`text-center ${isCurrentUser ? 'ring-2 ring-poker-gold rounded-lg p-2' : ''}`}>
-                      {/* Player Avatar */}
                       <div className={`w-16 h-16 rounded-full border-4 ${
                         player.isDealer ? 'border-poker-gold shadow-lg shadow-yellow-500/50' :
                         player.isSmallBlind ? 'border-blue-400 shadow-lg shadow-blue-400/50' :
@@ -359,25 +433,21 @@ export const TableView: React.FC = () => {
                         </span>
                       </div>
                       
-                      {/* Player Name */}
                       <div className="text-white font-semibold text-sm mb-1">
                         {player.username}
                         {isCurrentUser && <span className="text-poker-gold ml-1">(You)</span>}
                       </div>
                       
-                      {/* Chips */}
                       <div className="text-poker-gold font-bold text-sm">
                         {formatCurrency(player.chips)}
                       </div>
                       
-                      {/* Position Indicators */}
                       <div className="text-xs mt-1 space-x-1">
                         {player.isDealer && <span className="text-poker-gold bg-yellow-900 px-1 rounded">D</span>}
                         {player.isSmallBlind && <span className="text-blue-400 bg-blue-900 px-1 rounded">SB</span>}
                         {player.isBigBlind && <span className="text-red-400 bg-red-900 px-1 rounded">BB</span>}
                       </div>
 
-                      {/* Player Cards (only shown to the player themselves) */}
                       {isCurrentUser && player.cards && player.cards.length > 0 && (
                         <div className="flex justify-center space-x-1 mt-2">
                           {player.cards.map((card, index) => (
@@ -414,21 +484,138 @@ export const TableView: React.FC = () => {
               })}
             </div>
 
-            {/* Action Buttons for Players */}
-            {isPlayer && table.status === 'active' && (
-              <div className="mt-6 flex justify-center space-x-4">
-                <Button variant="secondary" className="bg-red-600 hover:bg-red-700">
-                  Fold
-                </Button>
-                <Button variant="secondary">
-                  Check
-                </Button>
-                <Button>
-                  Call
-                </Button>
-                <Button>
-                  Raise
-                </Button>
+            {/* NEW: Action Buttons */}
+            {isPlayer && table.status === 'active' && table.gamePhase !== 'finished' && (
+              <div className="mt-6">
+                <div className="bg-gray-800 rounded-lg p-4 mb-4 text-center">
+                  <div className="text-white mb-2">
+                    {isMyTurn ? (
+                      <span className="text-green-400 font-bold">Your Turn</span>
+                    ) : (
+                      <span className="text-gray-400">
+                        Waiting for {currentPlayer?.username || 'other player'}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {myPlayer && (
+                    <div className="text-sm text-gray-300 space-y-1">
+                      <div>Your chips: <span className="text-poker-gold font-bold">{formatCurrency(myPlayer.chips)}</span></div>
+                      <div>Current bet: <span className="text-white">{formatCurrency(myPlayer.currentBet || 0)}</span></div>
+                      {callAmount > 0 && (
+                        <div>To call: <span className="text-yellow-400">{formatCurrency(callAmount)}</span></div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {isMyTurn ? (
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <Button
+                      onClick={handleFold}
+                      disabled={isActionLoading}
+                      variant="secondary"
+                      className="bg-red-600 hover:bg-red-700 min-w-20"
+                    >
+                      {isActionLoading ? '...' : 'Fold'}
+                    </Button>
+                    
+                    {canCheck ? (
+                      <Button
+                        onClick={handleCheck}
+                        disabled={isActionLoading}
+                        variant="secondary"
+                        className="bg-blue-600 hover:bg-blue-700 min-w-20"
+                      >
+                        {isActionLoading ? '...' : 'Check'}
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleCall}
+                        disabled={isActionLoading || callAmount > (myPlayer?.chips || 0)}
+                        className="bg-green-600 hover:bg-green-700 min-w-20"
+                      >
+                        {isActionLoading ? '...' : `Call ${formatCurrency(callAmount)}`}
+                      </Button>
+                    )}
+                    
+                    <Button
+                      onClick={() => setShowRaiseModal(true)}
+                      disabled={isActionLoading || (myPlayer?.chips || 0) < minRaise}
+                      className="bg-orange-600 hover:bg-orange-700 min-w-20"
+                    >
+                      Raise
+                    </Button>
+                    
+                    <Button
+                      onClick={handleAllIn}
+                      disabled={isActionLoading || (myPlayer?.chips || 0) === 0}
+                      variant="secondary"
+                      className="bg-purple-600 hover:bg-purple-700 min-w-20"
+                    >
+                      All-In
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-400 py-4">
+                    Wait for your turn to act
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Raise Modal */}
+            {showRaiseModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-white">Raise Amount</h2>
+                    <button
+                      onClick={() => setShowRaiseModal(false)}
+                      className="text-gray-400 hover:text-white text-2xl"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Raise to:
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+                      <input
+                        type="number"
+                        min={minRaise}
+                        max={myPlayer?.chips || 0}
+                        step={table.bigBlind}
+                        value={raiseAmount}
+                        onChange={(e) => setRaiseAmount(Number(e.target.value))}
+                        className="w-full pl-8 pr-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-poker-gold"
+                      />
+                    </div>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Min: {formatCurrency(minRaise)} | Max: {formatCurrency(myPlayer?.chips || 0)}
+                    </p>
+                  </div>
+
+                  <div className="flex space-x-4">
+                    <Button 
+                      onClick={() => handleRaise(raiseAmount)}
+                      disabled={raiseAmount < minRaise || raiseAmount > (myPlayer?.chips || 0)}
+                      className="flex-1"
+                    >
+                      Raise to {formatCurrency(raiseAmount)}
+                    </Button>
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => setShowRaiseModal(false)} 
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -445,7 +632,7 @@ export const TableView: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Blinds:</span>
-                  <span className="text-white">${table.smallBlind}/${table.bigBlind}</span>
+                  <span className="text-white">${table.smallBlind}/{table.bigBlind}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Buy-in:</span>
@@ -547,7 +734,7 @@ export const TableView: React.FC = () => {
         minBuyIn={table.buyInMin}
         maxBuyIn={table.buyInMax}
         isLoading={isJoining}
-      />
+      /> 
     </div>
   );
 };

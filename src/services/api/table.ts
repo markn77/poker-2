@@ -8,16 +8,13 @@ const API_BASE_URL = process.env.NODE_ENV === 'production'
 export interface TablePlayer {
   id: string;
   username: string;
-  avatar_url?: string;
-  position: number;
   chips: number;
-  isDealer?: boolean;
-  isSmallBlind?: boolean;
-  isBigBlind?: boolean;
-  isActive: boolean;
-  hasActed?: boolean;
-  action?: 'fold' | 'call' | 'raise' | 'check' | 'all-in';
+  position: number;
+  isDealer: boolean;
+  isSmallBlind: boolean;
+  isBigBlind: boolean;
   cards?: string[];
+  currentBet?: number;   // <-- add this
 }
 
 export interface TableSpectator {
@@ -261,6 +258,73 @@ export class TableService {
       }
     } catch (error) {
       console.error('Get table templates error:', error);
+      return { success: false, error: 'Network error. Please try again.' };
+    }
+  }
+  // Add these methods to your existing TableService class in src/services/api/table.ts
+
+  // Player action in game
+  static async playerAction(tableId: string, action: string, amount?: number): Promise<JoinResponse> {
+    try {
+      const token = AuthService.getToken();
+      if (!token) {
+        return { success: false, error: 'No authentication token' };
+      }
+
+      const body: any = { action };
+      if (amount !== undefined && amount > 0) {
+        body.amount = amount;
+      }
+
+      console.log('Making player action:', { tableId, action, amount, body });
+
+      const response = await fetch(`${API_BASE_URL}/api/tables/${tableId}/action`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+      console.log('Player action response:', data);
+      
+      if (response.ok) {
+        return data;
+      } else {
+        return { success: false, error: data.error || 'Failed to perform action' };
+      }
+    } catch (error) {
+      console.error('Player action error:', error);
+      return { success: false, error: 'Network error. Please try again.' };
+    }
+  }
+
+  // Get game state
+  static async getGameState(tableId: string): Promise<any> {
+    try {
+      const token = AuthService.getToken();
+      if (!token) {
+        return { success: false, error: 'No authentication token' };
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/tables/${tableId}/game-state`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        return data;
+      } else {
+        return { success: false, error: data.error || 'Failed to get game state' };
+      }
+    } catch (error) {
+      console.error('Get game state error:', error);
       return { success: false, error: 'Network error. Please try again.' };
     }
   }

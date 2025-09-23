@@ -1,7 +1,10 @@
-// server/services/tableService.js
+// server/services/tableService.js - WITH POKER GAME ENGINE
 console.log('🔧 DEBUG: Loading tableService.js');
+const { PokerGame } = require('./pokerEngine');
+
 class TableService {
   static activeTables = new Map();
+  static activeGames = new Map(); // Store actual poker games
   
   // Table templates
   static TABLE_TEMPLATES = [
@@ -125,8 +128,9 @@ class TableService {
       spectators: [],
       currentPot: 0,
       communityCards: [],
-      gamePhase: 'preflop',
+      gamePhase: 'waiting',
       dealerPosition: 0,
+      currentPlayer: null,
       createdAt: new Date(),
       lastActivity: new Date()
     };
@@ -134,12 +138,73 @@ class TableService {
 
   // Get all active tables
   static getActiveTables() {
-    return Array.from(this.activeTables.values());
+    return Array.from(this.activeTables.values()).map(table => {
+      // If there's an active game, update table with game state
+      const game = this.activeGames.get(table.id);
+      if (game) {
+        const gameState = game.getGameState();
+        return {
+          ...table,
+          currentPot: gameState.pot,
+          communityCards: gameState.communityCards,
+          gamePhase: gameState.gamePhase,
+          currentPlayer: gameState.currentPlayer,
+          players: table.players.map(player => {
+            const gamePlayer = gameState.players.find(gp => gp.id === player.id);
+            return gamePlayer ? { ...player, ...gamePlayer } : player;
+          })
+        };
+      }
+      return table;
+    });
   }
 
   // Get table by ID
   static getTable(tableId) {
-    return this.activeTables.get(tableId);
+    const table = this.activeTables.get(tableId);
+    if (!table) return null;
+
+    // If there's an active game, merge game state
+    const game = this.activeGames.get(tableId);
+    if (game) {
+      const gameState = game.getGameState();
+      
+      // *** ADD DEBUG LOGGING ***
+      console.log('=== TABLE SERVICE DEBUG ===');
+      console.log('gameState.currentPlayer:', gameState.currentPlayer);
+      console.log('gameState.players:', gameState.players.map(p => ({ id: p.id, username: p.username })));
+      console.log('===========================');
+      
+      return {
+        ...table,
+        currentPot: gameState.pot,
+        communityCards: gameState.communityCards,
+        gamePhase: gameState.gamePhase,
+        currentPlayer: gameState.currentPlayer, // This should be the player ID from game engine
+        dealerPosition: gameState.dealerPosition,
+        players: table.players.map(player => {
+          const gamePlayer = gameState.players.find(gp => gp.id === player.id);
+          if (gamePlayer) {
+            return {
+              ...player,
+              chips: gamePlayer.chips,
+              currentBet: gamePlayer.currentBet,
+              isDealer: gamePlayer.isDealer,
+              isSmallBlind: gamePlayer.isSmallBlind,
+              isBigBlind: gamePlayer.isBigBlind,
+              isFolded: gamePlayer.isFolded,
+              isAllIn: gamePlayer.isAllIn,
+              hasActed: gamePlayer.hasActed,
+              action: gamePlayer.action,
+              cards: gamePlayer.cards
+            };
+          }
+          return player;
+        })
+      };
+    }
+    
+    return table;
   }
 
   // Join as spectator
@@ -209,7 +274,8 @@ class TableService {
       position,
       isActive: true,
       hasActed: false,
-      lastSeen: new Date()
+      lastSeen: new Date(),
+      cards: []
     };
     
     table.players.push(player);
@@ -220,13 +286,84 @@ class TableService {
     // Start game if minimum players reached
     if (table.players.length >= 2 && table.status === 'waiting') {
       table.status = 'active';
-      this.startNewHand(table);
+      this.startGame(table.id);
     }
     
     table.lastActivity = new Date();
-    console.log(`User ${user.username} joined table ${table.name} as player with $${buyInAmount}`);
+    console.log(`User ${user.username} joined table ${table.name} as player with ${buyInAmount}`);
     
     return { success: true, position };
+  }
+
+  // Start a poker game
+  static startGame(tableId) {
+    const table = this.activeTables.get(tableId);
+    if (!table) return false;
+    
+    console.log(`Starting poker game for table ${tableId}`);
+    
+    // Create new poker game instance
+    const game = new PokerGame(
+      tableId,
+      table.players,
+      table.smallBlind,
+      table.bigBlind
+    );
+    
+    this.activeGames.set(tableId, game);
+    
+    // Start the first hand
+    game.startNewHand();
+    
+    return true;
+  }
+
+  // Handle player action in game
+  static playerAction(tableId, playerId, action, amount = 0) {
+    const game = this.activeGames.get(tableId);
+    if (!game) {
+      return { success: false, error: 'No active game found' };
+    }
+    
+    try {
+      const result = game.playerAction(playerId, action, amount);
+      
+      // Update table with latest game state
+      const table = this.activeTables.get(tableId);
+      if (table) {
+        const gameState = game.getGameState();
+        table.currentPot = gameState.pot;
+        table.communityCards = gameState.communityCards;
+        table.gamePhase = gameState.gamePhase;
+        table.currentPlayer = gameState.currentPlayer;
+        table.lastActivity = new Date();
+        
+        // Update player chips in table
+        table.players.forEach(tablePlayer => {
+          const gamePlayer = gameState.players.find(gp => gp.id === tablePlayer.id);
+          if (gamePlayer) {
+            tablePlayer.chips = gamePlayer.chips;
+          }
+        });
+        
+        // Check if game ended and start new hand
+        if (gameState.gamePhase === 'finished') {
+          setTimeout(() => {
+            if (table.players.filter(p => p.chips > 0).length >= 2) {
+              game.startNewHand();
+            } else {
+              table.status = 'waiting';
+              this.activeGames.delete(tableId);
+            }
+          }, 5000); // 5 second delay before next hand
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Player action error:', error);
+      return { success: false, error: error.message };
+    }
   }
 
   // Leave table
@@ -244,6 +381,7 @@ class TableService {
       // If too few players, pause the game
       if (table.players.length < 2 && table.status === 'active') {
         table.status = 'waiting';
+        this.activeGames.delete(tableId);
       }
     }
     
@@ -282,6 +420,7 @@ class TableService {
     for (const [tableId, table] of entries) {
       if (table.players.length === 0 && table.lastActivity < cutoffTime) {
         this.activeTables.delete(tableId);
+        this.activeGames.delete(tableId);
         cleanedUp++;
       }
     }
@@ -303,55 +442,10 @@ class TableService {
     });
   }
 
-  // Start new hand
-  static startNewHand(table) {
-    // Reset hand state
-    table.currentPot = 0;
-    table.communityCards = [];
-    table.gamePhase = 'preflop';
-    
-    // Reset player states
-    table.players.forEach(player => {
-      player.hasActed = false;
-      player.action = undefined;
-      player.cards = [];
-    });
-    
-    // Set blinds and dealer
-    this.setBlindsAndDealer(table);
-    
-    console.log(`Started new hand at table ${table.name}`);
-  }
-
-  // Set blinds and dealer positions
-  static setBlindsAndDealer(table) {
-    if (table.players.length < 2) return;
-    
-    // Move dealer position
-    table.dealerPosition = (table.dealerPosition + 1) % table.players.length;
-    
-    // Clear previous positions
-    table.players.forEach(player => {
-      player.isDealer = false;
-      player.isBigBlind = false;
-      player.isSmallBlind = false;
-    });
-    
-    // Set new positions
-    table.players[table.dealerPosition].isDealer = true;
-    
-    if (table.players.length === 2) {
-      // Heads up: dealer is small blind
-      table.players[table.dealerPosition].isSmallBlind = true;
-      table.players[(table.dealerPosition + 1) % 2].isBigBlind = true;
-    } else {
-      // Multi-way: dealer, small blind, big blind
-      const sbPosition = (table.dealerPosition + 1) % table.players.length;
-      const bbPosition = (table.dealerPosition + 2) % table.players.length;
-      
-      table.players[sbPosition].isSmallBlind = true;
-      table.players[bbPosition].isBigBlind = true;
-    }
+  // Get game state for a specific table
+  static getGameState(tableId) {
+    const game = this.activeGames.get(tableId);
+    return game ? game.getGameState() : null;
   }
 }
 

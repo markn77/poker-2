@@ -24,6 +24,22 @@ const validateJoinAsPlayer = [
     }),
 ];
 
+const validatePlayerAction = [
+  body('action')
+    .isIn(['fold', 'call', 'raise', 'check', 'all-in'])
+    .withMessage('Invalid action'),
+  body('amount')
+    .optional()
+    .isNumeric()
+    .withMessage('Amount must be a number')
+    .custom((value, { req }) => {
+      if (req.body.action === 'raise' && (!value || value <= 0)) {
+        throw new Error('Raise amount must be greater than 0');
+      }
+      return true;
+    }),
+];
+
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -48,11 +64,17 @@ router.get('/', TableController.getTables);
 // Get specific table details - this should come AFTER specific routes
 router.get('/:tableId', TableController.getTable);
 
+// Get game state for a table
+router.get('/:tableId/game-state', TableController.getGameState);
+
 // Join table as spectator
 router.post('/:tableId/spectate', TableController.joinAsSpectator);
 
 // Join table as player
 router.post('/:tableId/join', validateJoinAsPlayer, handleValidationErrors, TableController.joinAsPlayer);
+
+// Player game action (fold, call, raise, check, all-in)
+router.post('/:tableId/action', validatePlayerAction, handleValidationErrors, TableController.playerAction);
 
 // Leave table
 router.post('/:tableId/leave', TableController.leaveTable);
