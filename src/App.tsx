@@ -1,9 +1,11 @@
+// src/App.tsx - Updated with TableView route
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { Home } from './pages/Home';
 import { Dashboard } from './pages/Dashboard';
 import { Profile } from './pages/Profile';
+import { TableView } from './pages/TableView'; // Add this import
 import './index.css';
 
 // Loading component
@@ -70,6 +72,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            } 
+          />
+
+          {/* Add the table view route */}
+          <Route 
+            path="/table/:tableId" 
+            element={
+              <ProtectedRoute>
+                <TableView />
               </ProtectedRoute>
             } 
           />

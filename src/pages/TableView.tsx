@@ -1,0 +1,553 @@
+// src/pages/TableView.tsx - REAL VERSION WITH REACT ROUTER
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../store/authStore';
+import { TableService, TableData } from '../services/api/table';
+import { Button } from '../components/common/Button';
+
+interface JoinAsPlayerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onJoin: (amount: number) => void;
+  minBuyIn: number;
+  maxBuyIn: number;
+  isLoading: boolean;
+}
+
+const JoinAsPlayerModal: React.FC<JoinAsPlayerModalProps> = ({
+  isOpen,
+  onClose,
+  onJoin,
+  minBuyIn,
+  maxBuyIn,
+  isLoading
+}) => {
+  const [buyInAmount, setBuyInAmount] = useState(minBuyIn);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (buyInAmount < minBuyIn || buyInAmount > maxBuyIn) {
+      setError(`Buy-in must be between $${minBuyIn.toLocaleString()} and $${maxBuyIn.toLocaleString()}`);
+      return;
+    }
+
+    onJoin(buyInAmount);
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-white">Join as Player</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white text-2xl"
+            disabled={isLoading}
+          >
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Buy-in Amount
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+              <input
+                type="number"
+                min={minBuyIn}
+                max={maxBuyIn}
+                step="50"
+                value={buyInAmount}
+                onChange={(e) => setBuyInAmount(Number(e.target.value))}
+                className="w-full pl-8 pr-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-poker-gold"
+                disabled={isLoading}
+              />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">
+              Range: {formatCurrency(minBuyIn)} - {formatCurrency(maxBuyIn)}
+            </p>
+          </div>
+
+          {error && (
+            <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded mb-4">
+              {error}
+            </div>
+          )}
+
+          <div className="flex space-x-4">
+            <Button 
+              type="submit" 
+              isLoading={isLoading} 
+              className="flex-1"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Joining...' : 'Join Game'}
+            </Button>
+            <Button 
+              type="button"
+              variant="secondary" 
+              onClick={onClose} 
+              disabled={isLoading}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export const TableView: React.FC = () => {
+  const { tableId } = useParams<{ tableId: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const [table, setTable] = useState<TableData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+
+  // Load table data
+  useEffect(() => {
+    if (!tableId) {
+      navigate('/dashboard');
+      return;
+    }
+
+    loadTable();
+    // Refresh table data every 10 seconds
+    const interval = setInterval(loadTable, 10000);
+    return () => clearInterval(interval);
+  }, [tableId, navigate]);
+
+  const loadTable = async () => {
+    if (!tableId) return;
+
+    try {
+      const response = await TableService.getTable(tableId);
+      if (response.success && response.table) {
+        setTable(response.table);
+        setError(null);
+      } else {
+        setError(response.error || 'Failed to load table');
+      }
+    } catch (err) {
+      setError('Network error loading table');
+      console.error('Error loading table:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleJoinAsPlayer = async (buyInAmount: number) => {
+    if (!tableId) return;
+
+    setIsJoining(true);
+    try {
+      const response = await TableService.joinAsPlayer(tableId, buyInAmount);
+      if (response.success) {
+        setShowJoinModal(false);
+        await loadTable(); // Refresh table data
+      } else {
+        setError(response.error || 'Failed to join as player');
+      }
+    } catch (err) {
+      setError('Network error joining table');
+      console.error('Error joining as player:', err);
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const handleLeaveTable = async () => {
+    if (!tableId) return;
+
+    try {
+      const response = await TableService.leaveTable(tableId);
+      if (response.success) {
+        navigate('/dashboard');
+      } else {
+        setError(response.error || 'Failed to leave table');
+      }
+    } catch (err) {
+      setError('Network error leaving table');
+      console.error('Error leaving table:', err);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const getPlayerPosition = (position: number, maxPlayers: number) => {
+    // Calculate position around circular table
+    const angle = (position / maxPlayers) * 360;
+    const radius = 45; // Percentage from center
+    const x = 50 + radius * Math.cos((angle - 90) * Math.PI / 180);
+    const y = 50 + radius * Math.sin((angle - 90) * Math.PI / 180);
+    return { x, y };
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+        <div className="flex items-center space-x-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-poker-gold"></div>
+          <div className="text-white text-xl">Loading table...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!table) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-white text-xl mb-4">Table not found</div>
+          <Button onClick={() => navigate('/dashboard')}>
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const isPlayer = table.userRole === 'player';
+  const isSpectator = table.userRole === 'spectator';
+  const canJoinAsPlayer = !isPlayer && table.players.length < table.maxPlayers;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+      {/* Header */}
+      <header className="bg-gray-900 border-b-2 border-poker-gold shadow-lg">
+        <nav className="flex justify-between items-center max-w-7xl mx-auto px-6 py-4">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center text-gray-400 hover:text-white transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Dashboard
+          </button>
+          
+          <div className="text-center">
+            <div className="text-2xl font-bold bg-gradient-to-r from-poker-gold to-yellow-400 bg-clip-text text-transparent">
+              {table.name}
+            </div>
+            <div className="text-sm text-gray-400 capitalize">
+              {table.gameType.replace('-', ' ')} • {table.players.length}/{table.maxPlayers} Players
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            {isPlayer && (
+              <Button
+                onClick={handleLeaveTable}
+                variant="secondary"
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Leave Table
+              </Button>
+            )}
+          </div>
+        </nav>
+      </header>
+
+      {/* Error Message */}
+      {error && (
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded-lg">
+            <div className="flex items-center justify-between">
+              <span>{error}</span>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-200 hover:text-white ml-4"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Table Area */}
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Poker Table */}
+          <div className="lg:col-span-3">
+            <div className="relative bg-gradient-to-br from-green-800 to-green-900 rounded-full aspect-[4/3] border-8 border-yellow-600 shadow-2xl">
+              {/* Community Cards Area */}
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                <div className="text-center mb-4">
+                  {table.currentPot > 0 && (
+                    <div className="text-poker-gold font-bold text-2xl mb-2">
+                      Pot: {formatCurrency(table.currentPot)}
+                    </div>
+                  )}
+                  <div className="text-white font-semibold capitalize">
+                    {table.gamePhase}
+                  </div>
+                </div>
+                
+                {/* Community Cards */}
+                <div className="flex justify-center space-x-2">
+                  {table.communityCards && table.communityCards.length > 0 ? (
+                    table.communityCards.map((card, index) => (
+                      <div
+                        key={index}
+                        className="w-12 h-16 bg-white rounded border-2 border-gray-300 flex items-center justify-center text-xs font-bold shadow-lg"
+                      >
+                        {card}
+                      </div>
+                    ))
+                  ) : null}
+                  
+                  {/* Placeholder cards for remaining community cards */}
+                  {Array.from({ length: 5 - (table.communityCards?.length || 0) }).map((_, index) => (
+                    <div
+                      key={`placeholder-${index}`}
+                      className="w-12 h-16 bg-gray-600 rounded border-2 border-gray-500 opacity-30"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Players positioned around table */}
+              {table.players.map((player) => {
+                const { x, y } = getPlayerPosition(player.position, table.maxPlayers);
+                const isCurrentUser = player.id === user?.id;
+                
+                return (
+                  <div
+                    key={player.id}
+                    className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: `${x}%`, top: `${y}%` }}
+                  >
+                    <div className={`text-center ${isCurrentUser ? 'ring-2 ring-poker-gold rounded-lg p-2' : ''}`}>
+                      {/* Player Avatar */}
+                      <div className={`w-16 h-16 rounded-full border-4 ${
+                        player.isDealer ? 'border-poker-gold shadow-lg shadow-yellow-500/50' :
+                        player.isSmallBlind ? 'border-blue-400 shadow-lg shadow-blue-400/50' :
+                        player.isBigBlind ? 'border-red-400 shadow-lg shadow-red-400/50' :
+                        'border-gray-600'
+                      } bg-gradient-to-br from-poker-gold to-yellow-600 flex items-center justify-center mx-auto mb-2`}>
+                        <span className="text-gray-900 font-bold text-lg">
+                          {player.username.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      
+                      {/* Player Name */}
+                      <div className="text-white font-semibold text-sm mb-1">
+                        {player.username}
+                        {isCurrentUser && <span className="text-poker-gold ml-1">(You)</span>}
+                      </div>
+                      
+                      {/* Chips */}
+                      <div className="text-poker-gold font-bold text-sm">
+                        {formatCurrency(player.chips)}
+                      </div>
+                      
+                      {/* Position Indicators */}
+                      <div className="text-xs mt-1 space-x-1">
+                        {player.isDealer && <span className="text-poker-gold bg-yellow-900 px-1 rounded">D</span>}
+                        {player.isSmallBlind && <span className="text-blue-400 bg-blue-900 px-1 rounded">SB</span>}
+                        {player.isBigBlind && <span className="text-red-400 bg-red-900 px-1 rounded">BB</span>}
+                      </div>
+
+                      {/* Player Cards (only shown to the player themselves) */}
+                      {isCurrentUser && player.cards && player.cards.length > 0 && (
+                        <div className="flex justify-center space-x-1 mt-2">
+                          {player.cards.map((card, index) => (
+                            <div
+                              key={index}
+                              className="w-8 h-10 bg-white rounded border text-xs font-bold flex items-center justify-center shadow-md"
+                            >
+                              {card}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Empty seats */}
+              {Array.from({ length: table.maxPlayers - table.players.length }).map((_, index) => {
+                const position = table.players.length + index;
+                const { x, y } = getPlayerPosition(position, table.maxPlayers);
+                
+                return (
+                  <div
+                    key={`empty-${index}`}
+                    className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: `${x}%`, top: `${y}%` }}
+                  >
+                    <div className="w-16 h-16 rounded-full border-4 border-dashed border-gray-600 flex items-center justify-center hover:border-gray-500 transition-colors cursor-pointer">
+                      <span className="text-gray-500 text-2xl">+</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Action Buttons for Players */}
+            {isPlayer && table.status === 'active' && (
+              <div className="mt-6 flex justify-center space-x-4">
+                <Button variant="secondary" className="bg-red-600 hover:bg-red-700">
+                  Fold
+                </Button>
+                <Button variant="secondary">
+                  Check
+                </Button>
+                <Button>
+                  Call
+                </Button>
+                <Button>
+                  Raise
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Table Info */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-lg font-semibold text-white mb-4">Table Info</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Game Type:</span>
+                  <span className="text-white capitalize">{table.gameType.replace('-', ' ')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Blinds:</span>
+                  <span className="text-white">${table.smallBlind}/${table.bigBlind}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Buy-in:</span>
+                  <span className="text-white">
+                    {formatCurrency(table.buyInMin)} - {formatCurrency(table.buyInMax)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Status:</span>
+                  <span className={`capitalize ${
+                    table.status === 'active' ? 'text-green-400' :
+                    table.status === 'waiting' ? 'text-yellow-400' :
+                    'text-red-400'
+                  }`}>
+                    {table.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Join as Player Button */}
+            {canJoinAsPlayer && (
+              <Button
+                onClick={() => setShowJoinModal(true)}
+                className="w-full text-lg py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl"
+              >
+                Join as Player
+              </Button>
+            )}
+
+            {/* Role Status */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-lg font-semibold text-white mb-2">Your Status</h3>
+              <div className={`text-center py-2 rounded font-semibold ${
+                isPlayer ? 'bg-green-900 text-green-200' :
+                isSpectator ? 'bg-blue-900 text-blue-200' :
+                'bg-gray-900 text-gray-300'
+              }`}>
+                {isPlayer ? 'Player' : isSpectator ? 'Spectator' : 'Observer'}
+              </div>
+            </div>
+
+            {/* AI Insights Panel */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-lg font-semibold text-white mb-4">AI Insights</h3>
+              {isPlayer ? (
+                <div className="space-y-3">
+                  <div className="bg-blue-900 rounded p-3">
+                    <div className="text-blue-200 text-sm font-medium mb-1">Hand Strength</div>
+                    <div className="text-white font-bold">Calculating...</div>
+                  </div>
+                  <div className="bg-green-900 rounded p-3">
+                    <div className="text-green-200 text-sm font-medium mb-1">Recommended Action</div>
+                    <div className="text-white font-bold">Analyzing...</div>
+                  </div>
+                  <div className="bg-yellow-900 rounded p-3">
+                    <div className="text-yellow-200 text-sm font-medium mb-1">Pot Odds</div>
+                    <div className="text-white font-bold">
+                      {table.currentPot > 0 ? 'Calculating...' : 'N/A'}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-gray-400 text-center py-4">
+                  Join as a player to receive AI insights and recommendations
+                </div>
+              )}
+            </div>
+
+            {/* Spectators List */}
+            {table.spectatorList && table.spectatorList.length > 0 && (
+              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4">
+                  Spectators ({table.spectatorList.length})
+                </h3>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {table.spectatorList.map((spectator) => (
+                    <div key={spectator.id} className="flex items-center space-x-2">
+                      <div className="w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center">
+                        <span className="text-xs font-semibold">
+                          {spectator.username.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="text-sm text-gray-300">{spectator.username}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Join as Player Modal */}
+      <JoinAsPlayerModal
+        isOpen={showJoinModal}
+        onClose={() => setShowJoinModal(false)}
+        onJoin={handleJoinAsPlayer}
+        minBuyIn={table.buyInMin}
+        maxBuyIn={table.buyInMax}
+        isLoading={isJoining}
+      />
+    </div>
+  );
+};

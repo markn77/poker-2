@@ -1,9 +1,10 @@
+// server/server.js - NO RATE LIMITING VERSION
 const express = require('express');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const tableRoutes = require('./routes/tables');
 require('dotenv').config();
 
 const app = express();
@@ -28,37 +29,26 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'development' ? 100 : 5, // Higher limit in dev
-  message: { 
-    success: false, 
-    error: 'Too many authentication attempts, please try again later.' 
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Apply rate limiting
-//APPLY THIS WHEN DEPLOYINGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
-//app.use('/api/auth', authLimiter);
-app.use(generalLimiter);
-
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// DEBUG: Log all requests in development
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    next();
+  });
+}
+
 // Routes
+console.log('Registering routes...');
 app.use('/api/auth', authRoutes);
+console.log('Auth routes registered');
 app.use('/api/users', userRoutes);
+console.log('User routes registered');
+app.use('/api/tables', tableRoutes);
+console.log('Table routes registered');
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -82,7 +72,6 @@ app.get('/', (req, res) => {
 app.use((error, req, res, next) => {
   console.error('Unhandled error:', error);
   
-  // Don't expose internal errors in production
   const message = process.env.NODE_ENV === 'production' 
     ? 'Internal server error' 
     : error.message;
@@ -95,20 +84,28 @@ app.use((error, req, res, next) => {
 
 // 404 handler - must be last
 app.use((req, res) => {
+  console.log(`404 - Route not found: ${req.method} ${req.path}`);
   res.status(404).json({
     success: false,
-    error: 'Route not found'
+    error: `Route not found: ${req.method} ${req.path}`
   });
 });
 
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log('Rate limiting: DISABLED');
   
   if (process.env.NODE_ENV !== 'production') {
-    console.log(`🌐 CORS enabled for: http://localhost:3000`);
+    console.log(`CORS enabled for: http://localhost:3000`);
   }
+  
+  // Test if table service is working
+  console.log('Server started successfully. Testing table service...');
+  const TableService = require('./services/tableService');
+  const tables = TableService.getActiveTables();
+  console.log(`TableService is working: ${tables.length} tables available`);
 });
