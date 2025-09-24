@@ -392,15 +392,15 @@ export const TableView: React.FC = () => {
                 <div className="flex justify-center space-x-2">
                   {table.communityCards && table.communityCards.length > 0 ? (
                     table.communityCards.map((card, index) => (
-                      <div
+                      <img
                         key={index}
-                        className="w-12 h-16 bg-white rounded border-2 border-gray-300 flex items-center justify-center text-xs font-bold shadow-lg"
-                      >
-                        {card}
-                      </div>
+                        src={`/cards/${card}.svg`} // <-- uses public/cards
+                        alt={card}
+                        className="w-12 h-16 rounded border-2 border-gray-300 shadow-lg"
+                      />
                     ))
                   ) : null}
-                  
+
                   {Array.from({ length: 5 - (table.communityCards?.length || 0) }).map((_, index) => (
                     <div
                       key={`placeholder-${index}`}
@@ -451,12 +451,12 @@ export const TableView: React.FC = () => {
                       {isCurrentUser && player.cards && player.cards.length > 0 && (
                         <div className="flex justify-center space-x-1 mt-2">
                           {player.cards.map((card, index) => (
-                            <div
+                            <img
                               key={index}
-                              className="w-8 h-10 bg-white rounded border text-xs font-bold flex items-center justify-center shadow-md"
-                            >
-                              {card}
-                            </div>
+                              src={`/cards/${card}.svg`}
+                              alt={card}
+                              className="w-8 h-10"
+                            />
                           ))}
                         </div>
                       )}
