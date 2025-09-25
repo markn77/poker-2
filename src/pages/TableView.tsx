@@ -1,9 +1,11 @@
-// src/pages/TableView.tsx - FINAL VERSION WITH ACTIONS + RAISE MODAL
+// src/pages/TableView.tsx - FINAL VERSION WITH FIXED CARD ANIMATIONS
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { TableService, TableData } from '../services/api/table';
 import { Button } from '../components/common/Button';
+import { motion } from 'framer-motion';
+
 
 interface JoinAsPlayerModalProps {
   isOpen: boolean;
@@ -13,6 +15,9 @@ interface JoinAsPlayerModalProps {
   maxBuyIn: number;
   isLoading: boolean;
 }
+
+const deckPosition = { x: 50, y: 50 }; // center of table in percentage
+
 
 const JoinAsPlayerModal: React.FC<JoinAsPlayerModalProps> = ({
   isOpen,
@@ -124,6 +129,70 @@ export const TableView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+
+  const [holeCardsDealt, setHoleCardsDealt] = useState(false);
+  const [animatedCards, setAnimatedCards] = useState<Array<{playerId: string, card: string, index: number}>>([]);
+  const [animationComplete, setAnimationComplete] = useState(false);
+
+  // Helper function to get card final position (matching exactly where static cards were)
+  const getCardPosition = (playerPosition: number, cardIndex: number, maxPlayers: number) => {
+    const { x: playerX, y: playerY } = getPlayerPosition(playerPosition, maxPlayers);
+    
+    // Match the exact positioning from the static cards: "space-x-1 mt-2"
+    // space-x-1 in Tailwind = 0.25rem = 4px between cards
+    // mt-2 in Tailwind = 0.5rem = 8px margin top
+    const cardSpacing = 10; // Half card width + spacing for side-by-side placement
+    const cardOffsetX = cardIndex === 0 ? -cardSpacing : cardSpacing; // Left card, right card
+    const cardOffsetY = 24; // Below player info, matching mt-2 + some buffer
+    
+    return {
+      x: playerX,
+      y: playerY + cardOffsetY,
+      offsetX: cardOffsetX
+    };
+  };
+
+  useEffect(() => {
+    if (!table || !table.players || table.gamePhase !== 'preflop' || holeCardsDealt) return;
+
+    // Reset animation state when new game starts
+    setAnimatedCards([]);
+    setAnimationComplete(false);
+
+    const cardsToDeal: Array<{playerId: string, card: string, index: number}> = [];
+    
+    // Deal cards in proper order - first card to each player, then second card
+    for (let cardIndex = 0; cardIndex < 2; cardIndex++) {
+      table.players.forEach((player) => {
+        // Deal cards to ALL players, not just those with visible cards
+        const cardValue = player.cards && player.cards[cardIndex] ? player.cards[cardIndex] : 'card_back';
+        cardsToDeal.push({ playerId: player.id, card: cardValue, index: cardIndex });
+      });
+    }
+
+    cardsToDeal.forEach((deal, i) => {
+      setTimeout(() => {
+        setAnimatedCards((prev) => [...prev, deal]);
+        
+        // Mark animation complete after last card
+        if (i === cardsToDeal.length - 1) {
+          setTimeout(() => {
+            setHoleCardsDealt(true);
+            setAnimationComplete(true);
+          }, 800); // Wait for animation to complete
+        }
+      }, i * 150); // Slightly faster dealing
+    });
+  }, [table, holeCardsDealt]);
+
+  // Reset animation state when game phase changes
+  useEffect(() => {
+    if (table?.gamePhase !== 'preflop') {
+      setHoleCardsDealt(false);
+      setAnimatedCards([]);
+      setAnimationComplete(false);
+    }
+  }, [table?.gamePhase]);
 
   // NEW: action state
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -448,14 +517,15 @@ export const TableView: React.FC = () => {
                         {player.isBigBlind && <span className="text-red-400 bg-red-900 px-1 rounded">BB</span>}
                       </div>
 
-                      {isCurrentUser && player.cards && player.cards.length > 0 && (
+                      {/* NO static cards shown during preflop if animation hasn't completed */}
+                      {table.gamePhase !== 'preflop' && isCurrentUser && player.cards && player.cards.length > 0 && (
                         <div className="flex justify-center space-x-1 mt-2">
                           {player.cards.map((card, index) => (
                             <img
                               key={index}
                               src={`/cards/${card}.svg`}
                               alt={card}
-                              className="w-8 h-10"
+                              className="w-8 h-10 rounded shadow-lg"
                             />
                           ))}
                         </div>
@@ -465,6 +535,56 @@ export const TableView: React.FC = () => {
                 );
               })}
 
+              {/* Animated hole cards - positioned exactly where static cards would be */}
+              {animatedCards.map(({ playerId, card, index }, animIndex) => {
+                const player = table.players.find(p => p.id === playerId);
+                if (!player) return null;
+                
+                const { x, y, offsetX } = getCardPosition(player.position, index, table.maxPlayers);
+                const isCurrentUser = player.id === user?.id;
+                
+                // Show face-up cards for current user, face-down for others
+                const cardSrc = isCurrentUser && card !== 'card_back' ? `/cards/${card}.svg` : '/cards/card_back.png';
+
+                return (
+                  <motion.div
+                    key={`${playerId}-${index}-${animIndex}`}
+                    className="absolute w-8 h-10 pointer-events-none"
+                    initial={{ 
+                      left: `${deckPosition.x}%`, 
+                      top: `${deckPosition.y}%`,
+                      x: '-50%',
+                      y: '-50%',
+                      scale: 0.9,
+                      rotate: Math.random() * 10 - 5,
+                      zIndex: 100 + animIndex
+                    }}
+                    animate={{ 
+                      left: `${x}%`, 
+                      top: `${y}%`,
+                      x: `calc(-50% + ${offsetX}px)`, // This should match "space-x-1" spacing
+                      y: '-50%', // Keep centered vertically at the calculated position
+                      scale: 1,
+                      rotate: Math.random() * 4 - 2, // Less rotation for cleaner look
+                    }}
+                    transition={{ 
+                      duration: 0.6,
+                      ease: "easeOut",
+                      delay: 0
+                    }}
+                    style={{
+                      transformOrigin: 'center center'
+                    }}
+                  >
+                    <img
+                      src={cardSrc}
+                      alt={isCurrentUser && card !== 'back' ? card : 'face-down card'}
+                      className="w-full h-full rounded shadow-lg border border-gray-300"
+                    />
+                  </motion.div>
+                );
+              })}
+              
               {/* Empty seats */}
               {Array.from({ length: table.maxPlayers - table.players.length }).map((_, index) => {
                 const position = table.players.length + index;
