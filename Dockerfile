@@ -17,4 +17,5 @@ COPY . .
 EXPOSE 3001
 
 # Start the server (only runs during start phase, not build)
-CMD ["node", "server/server.js"]
+WORKDIR /app/server
+CMD ["node", "server.js"]
