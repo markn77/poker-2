@@ -2,7 +2,7 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy and install root dependencies
+# Copy and install root dependencies (React app)
 COPY package*.json ./
 RUN npm install
 
@@ -13,8 +13,13 @@ RUN npm install --prefix ./server
 # Copy all application code
 COPY . .
 
-# Change to server directory and start
+# Build React app for production
+RUN npm run build
+
+# Change to server directory
 WORKDIR /app/server
-EXPOSE 3001
+
+# Expose port 8080 (Railway assigns this)
+EXPOSE 8080
 
 CMD ["node", "server.js"]

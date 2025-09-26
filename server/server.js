@@ -1,4 +1,4 @@
-// server/server.js - NO RATE LIMITING VERSION
+// server/server.js - FULL STACK VERSION
 
 console.log('🔧 DEBUGGING PORT ISSUE:');
 console.log('🔧 process.env.PORT:', process.env.PORT);
@@ -9,6 +9,7 @@ console.log('🔧 NODE_ENV:', process.env.NODE_ENV);
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const path = require('path');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const tableRoutes = require('./routes/tables');
@@ -16,7 +17,7 @@ require('dotenv').config();
 
 const app = express();
 
-// Security middleware
+// Security middleware - Updated for React static files
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -24,14 +25,19 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
     },
   },
 }));
 
-// CORS configuration
+// Serve React static files FIRST
+app.use(express.static(path.join(__dirname, '../build')));
+
+// CORS configuration - Updated for full-stack
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'https://your-frontend.vercel.app'
+    ? true // Allow same origin in production
     : 'http://localhost:3000',
   credentials: true
 }));
@@ -48,8 +54,8 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Routes
-console.log('Registering routes...');
+// API Routes
+console.log('Registering API routes...');
 app.use('/api/auth', authRoutes);
 console.log('Auth routes registered');
 app.use('/api/users', userRoutes);
@@ -62,16 +68,23 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    frontend: 'served'
   });
 });
 
-// Root endpoint
-app.get('/', (req, res) => {
+// API info endpoint
+app.get('/api', (req, res) => {
   res.json({ 
     message: 'Poker Platform API',
     version: '1.0.0',
-    status: 'running'
+    status: 'running',
+    endpoints: {
+      auth: '/api/auth',
+      users: '/api/users', 
+      tables: '/api/tables',
+      health: '/health'
+    }
   });
 });
 
@@ -89,21 +102,19 @@ app.use((error, req, res, next) => {
   });
 });
 
-// 404 handler - must be last
-app.use((req, res) => {
-  console.log(`404 - Route not found: ${req.method} ${req.path}`);
-  res.status(404).json({
-    success: false,
-    error: `Route not found: ${req.method} ${req.path}`
-  });
+// React catch-all handler - MUST BE LAST
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../build/index.html'));
 });
 
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Full-stack server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Health check: http://0.0.0.0:${PORT}/health`);
+  console.log(`React app: http://0.0.0.0:${PORT}/`);
+  console.log(`API endpoints: http://0.0.0.0:${PORT}/api`);
   console.log('Rate limiting: DISABLED');
   
   if (process.env.NODE_ENV !== 'production') {

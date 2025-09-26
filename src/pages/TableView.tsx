@@ -1,11 +1,10 @@
-// src/pages/TableView.tsx - FINAL VERSION WITH FIXED CARD ANIMATIONS
-import React, { useState, useEffect } from 'react';
+// src/pages/TableView.tsx - FIXED VERSION
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { TableService, TableData } from '../services/api/table';
 import { Button } from '../components/common/Button';
 import { motion } from 'framer-motion';
-
 
 interface JoinAsPlayerModalProps {
   isOpen: boolean;
@@ -17,7 +16,6 @@ interface JoinAsPlayerModalProps {
 }
 
 const deckPosition = { x: 50, y: 50 }; // center of table in percentage
-
 
 const JoinAsPlayerModal: React.FC<JoinAsPlayerModalProps> = ({
   isOpen,
@@ -132,15 +130,16 @@ export const TableView: React.FC = () => {
 
   const [holeCardsDealt, setHoleCardsDealt] = useState(false);
   const [animatedCards, setAnimatedCards] = useState<Array<{playerId: string, card: string, index: number}>>([]);
-  const [animationComplete, setAnimationComplete] = useState(false);
 
-  // Helper function to get card final position (matching exactly where static cards were)
+  // Action state
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [raiseAmount, setRaiseAmount] = useState(20);
+  const [showRaiseModal, setShowRaiseModal] = useState(false);
+
+  // Helper function to get card final position
   const getCardPosition = (playerPosition: number, cardIndex: number, maxPlayers: number) => {
     const { x: playerX, y: playerY } = getPlayerPosition(playerPosition, maxPlayers);
     
-    // Match the exact positioning from the static cards: "space-x-1 mt-2"
-    // space-x-1 in Tailwind = 0.25rem = 4px between cards
-    // mt-2 in Tailwind = 0.5rem = 8px margin top
     const cardSpacing = 10; // Half card width + spacing for side-by-side placement
     const cardOffsetX = cardIndex === 0 ? -cardSpacing : cardSpacing; // Left card, right card
     const cardOffsetY = 24; // Below player info, matching mt-2 + some buffer
@@ -152,12 +151,38 @@ export const TableView: React.FC = () => {
     };
   };
 
+  const getPlayerPosition = (position: number, maxPlayers: number) => {
+    const angle = (position / maxPlayers) * 360;
+    const radius = 45;
+    const x = 50 + radius * Math.cos((angle - 90) * Math.PI / 180);
+    const y = 50 + radius * Math.sin((angle - 90) * Math.PI / 180);
+    return { x, y };
+  };
+
+  const loadTable = useCallback(async () => {
+    if (!tableId) return;
+    try {
+      const response = await TableService.getTable(tableId);
+      if (response.success && response.table) {
+        setTable(response.table);
+        setError(null);
+      } else {
+        setError(response.error || 'Failed to load table');
+      }
+    } catch (err) {
+      setError('Network error loading table');
+      console.error('Error loading table:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [tableId]);
+
+  // Card animation effect
   useEffect(() => {
     if (!table || !table.players || table.gamePhase !== 'preflop' || holeCardsDealt) return;
 
     // Reset animation state when new game starts
     setAnimatedCards([]);
-    setAnimationComplete(false);
 
     const cardsToDeal: Array<{playerId: string, card: string, index: number}> = [];
     
@@ -178,7 +203,6 @@ export const TableView: React.FC = () => {
         if (i === cardsToDeal.length - 1) {
           setTimeout(() => {
             setHoleCardsDealt(true);
-            setAnimationComplete(true);
           }, 800); // Wait for animation to complete
         }
       }, i * 150); // Slightly faster dealing
@@ -190,14 +214,8 @@ export const TableView: React.FC = () => {
     if (table?.gamePhase !== 'preflop') {
       setHoleCardsDealt(false);
       setAnimatedCards([]);
-      setAnimationComplete(false);
     }
   }, [table?.gamePhase]);
-
-  // NEW: action state
-  const [isActionLoading, setIsActionLoading] = useState(false);
-  const [raiseAmount, setRaiseAmount] = useState(table?.bigBlind || 20);
-  const [showRaiseModal, setShowRaiseModal] = useState(false);
 
   // Load table data
   useEffect(() => {
@@ -210,26 +228,14 @@ export const TableView: React.FC = () => {
     // Refresh table data every 10 seconds
     const interval = setInterval(loadTable, 10000);
     return () => clearInterval(interval);
-  }, [tableId, navigate]);
+  }, [tableId, navigate, loadTable]);
 
-  const loadTable = React.useCallback(async () => {
-    if (!tableId) return;
-    try {
-      const response = await TableService.getTable(tableId);
-      if (response.success && response.table) {
-        setTable(response.table);
-        setError(null);
-      } else {
-        setError(response.error || 'Failed to load table');
-      }
-    } catch (err) {
-      setError('Network error loading table');
-      console.error('Error loading table:', err);
-    } finally {
-      setIsLoading(false);
+  // Update raise amount when table data changes
+  useEffect(() => {
+    if (table?.bigBlind) {
+      setRaiseAmount(table.bigBlind);
     }
-  }, [tableId]);
-
+  }, [table?.bigBlind]);
 
   const handleJoinAsPlayer = async (buyInAmount: number) => {
     if (!tableId) return;
@@ -267,7 +273,7 @@ export const TableView: React.FC = () => {
     }
   };
 
-  // NEW: player action handlers
+  // Player action handlers
   const handlePlayerAction = async (action: string, amount?: number) => {
     if (!tableId || !table) return;
     
@@ -306,14 +312,6 @@ export const TableView: React.FC = () => {
     }).format(amount);
   };
 
-  const getPlayerPosition = (position: number, maxPlayers: number) => {
-    const angle = (position / maxPlayers) * 360;
-    const radius = 45;
-    const x = 50 + radius * Math.cos((angle - 90) * Math.PI / 180);
-    const y = 50 + radius * Math.sin((angle - 90) * Math.PI / 180);
-    return { x, y };
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
@@ -342,41 +340,9 @@ export const TableView: React.FC = () => {
   const isSpectator = table.userRole === 'spectator';
   const canJoinAsPlayer = !isPlayer && table.players.length < table.maxPlayers;
 
-  console.log('=== TURN DEBUG ===');
-  console.log('table.currentPlayer:', table.currentPlayer);
-  console.log('user?.id:', user?.id);
-  console.log('table.players:', table.players.map(p => ({ id: p.id, username: p.username })));
-  console.log('currentPlayerIndex from backend would be player:', table.players.find(p => p.id === table.currentPlayer));
-  console.log('isMyTurn calculation:', table.currentPlayer === user?.id);
-  console.log('==================');
-  console.log('=== FRONTEND TURN DEBUG ===');
-  console.log('table:', table);
-  console.log('table.currentPlayer:', table.currentPlayer);
-  console.log('user:', user);
-  console.log('user?.id:', user?.id);
-  console.log('table.players:', table.players);
-  console.log('table.gamePhase:', table.gamePhase);
-  console.log('table.status:', table.status);
-
-
-  // NEW: turn and betting logic
-  const isMyTurn = String(table.currentPlayer) === String(user?.id); // <-- FIX HERE
+  // Turn and betting logic
+  const isMyTurn = String(table.currentPlayer) === String(user?.id);
   const currentPlayer = table.players.find(p => String(p.id) === String(table.currentPlayer));
-
-  console.log('currentPlayer found:', currentPlayer);
-  console.log('isMyTurn calculation:', isMyTurn);
-  //console.log('myPlayer found:', myPlayer);
-  console.log('==============================');
-  // Also update the display logic:
-  <div className="text-white mb-2">
-    {isMyTurn ? (
-      <span className="text-green-400 font-bold">Your Turn</span>
-    ) : (
-      <span className="text-gray-400">
-        Waiting for {currentPlayer?.username || 'other player'}
-      </span>
-    )}
-  </div>
   const myPlayer = table.players.find(p => String(p.id) === String(user?.id));
   const currentBet = table.players.reduce((max, p) => Math.max(max, p.currentBet || 0), 0);
   const callAmount = currentBet - (myPlayer?.currentBet || 0);
@@ -463,7 +429,7 @@ export const TableView: React.FC = () => {
                     table.communityCards.map((card, index) => (
                       <img
                         key={index}
-                        src={`/cards/${card}.svg`} // <-- uses public/cards
+                        src={`/cards/${card}.svg`}
                         alt={card}
                         className="w-12 h-16 rounded border-2 border-gray-300 shadow-lg"
                       />
@@ -517,7 +483,7 @@ export const TableView: React.FC = () => {
                         {player.isBigBlind && <span className="text-red-400 bg-red-900 px-1 rounded">BB</span>}
                       </div>
 
-                      {/* NO static cards shown during preflop if animation hasn't completed */}
+                      {/* Show static cards when not in preflop or animation complete */}
                       {table.gamePhase !== 'preflop' && isCurrentUser && player.cards && player.cards.length > 0 && (
                         <div className="flex justify-center space-x-1 mt-2">
                           {player.cards.map((card, index) => (
@@ -535,7 +501,7 @@ export const TableView: React.FC = () => {
                 );
               })}
 
-              {/* Animated hole cards - positioned exactly where static cards would be */}
+              {/* Animated hole cards */}
               {animatedCards.map(({ playerId, card, index }, animIndex) => {
                 const player = table.players.find(p => p.id === playerId);
                 if (!player) return null;
@@ -562,10 +528,10 @@ export const TableView: React.FC = () => {
                     animate={{ 
                       left: `${x}%`, 
                       top: `${y}%`,
-                      x: `calc(-50% + ${offsetX}px)`, // This should match "space-x-1" spacing
-                      y: '-50%', // Keep centered vertically at the calculated position
+                      x: `calc(-50% + ${offsetX}px)`,
+                      y: '-50%',
                       scale: 1,
-                      rotate: Math.random() * 4 - 2, // Less rotation for cleaner look
+                      rotate: Math.random() * 4 - 2,
                     }}
                     transition={{ 
                       duration: 0.6,
@@ -604,7 +570,7 @@ export const TableView: React.FC = () => {
               })}
             </div>
 
-            {/* NEW: Action Buttons */}
+            {/* Action Buttons */}
             {isPlayer && table.status === 'active' && table.gamePhase !== 'finished' && (
               <div className="mt-6">
                 <div className="bg-gray-800 rounded-lg p-4 mb-4 text-center">
