@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 3001
 
 # Start the server (only runs during start phase, not build)
-CMD ["sh", "-c", "cd server && node server.js"]
+CMD ["node", "server/server.js"]
