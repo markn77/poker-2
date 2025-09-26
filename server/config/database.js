@@ -8,14 +8,14 @@ console.log('DB_HOST:', process.env.DB_HOST);
 console.log('DB_NAME:', process.env.DB_NAME);
 console.log('DB_PORT:', process.env.DB_PORT);
 
-// Create a PostgreSQL pool
+// Create a PostgreSQL pool for Railway
 const pool = new Pool({
-    user: process.env.DB_USER,                 // Railway DB user
-    host: process.env.DB_HOST,                 // Railway DB host
-    database: process.env.DB_NAME,             // Railway DB name
-    password: process.env.DB_PASSWORD,         // Railway DB password
-    port: parseInt(process.env.DB_PORT),       // Railway DB public port
-    ssl: { rejectUnauthorized: false },        // Required for public Postgres on Railway
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: parseInt(process.env.DB_PORT),
+    ssl: { rejectUnauthorized: false },  // Required for Railway public Postgres
     connectionTimeoutMillis: 2000,
 });
 
