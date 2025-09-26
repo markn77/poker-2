@@ -1,10 +1,4 @@
-// server/server.js - FULL STACK VERSION
-
-console.log('🔧 DEBUGGING PORT ISSUE:');
-console.log('🔧 process.env.PORT:', process.env.PORT);
-console.log('🔧 process.argv:', process.argv);
-console.log('🔧 All PORT-related env vars:', Object.keys(process.env).filter(key => key.toLowerCase().includes('port')));
-console.log('🔧 NODE_ENV:', process.env.NODE_ENV);
+// server/server.js - FULL STACK VERSION (Railway-ready)
 
 const express = require('express');
 const cors = require('cors');
@@ -13,11 +7,11 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const tableRoutes = require('./routes/tables');
-require('dotenv').config();
+const TableService = require('./services/tableService');
 
 const app = express();
 
-// Security middleware - Updated for React static files
+// Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -31,13 +25,13 @@ app.use(helmet({
   },
 }));
 
-// Serve React static files FIRST
+// Serve React static files
 app.use(express.static(path.join(__dirname, '../build')));
 
-// CORS configuration - Updated for full-stack
+// CORS configuration
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? true // Allow same origin in production
+    ? true // allow same origin in production
     : 'http://localhost:3000',
   credentials: true
 }));
@@ -46,7 +40,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// DEBUG: Log all requests in development
+// Debug logging in development
 if (process.env.NODE_ENV !== 'production') {
   app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -54,7 +48,7 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// API Routes
+// Register API routes
 console.log('Registering API routes...');
 app.use('/api/auth', authRoutes);
 console.log('Auth routes registered');
@@ -107,6 +101,7 @@ app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../build/index.html'));
 });
 
+// Use Railway-assigned PORT
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -121,9 +116,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`CORS enabled for: http://localhost:3000`);
   }
   
-  // Test if table service is working
-  console.log('Server started successfully. Testing table service...');
-  const TableService = require('./services/tableService');
+  // Test TableService
   const tables = TableService.getActiveTables();
   console.log(`TableService is working: ${tables.length} tables available`);
 });
