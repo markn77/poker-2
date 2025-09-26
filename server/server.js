@@ -1,4 +1,11 @@
 // server/server.js - NO RATE LIMITING VERSION
+
+console.log('🔧 DEBUGGING PORT ISSUE:');
+console.log('🔧 process.env.PORT:', process.env.PORT);
+console.log('🔧 process.argv:', process.argv);
+console.log('🔧 All PORT-related env vars:', Object.keys(process.env).filter(key => key.toLowerCase().includes('port')));
+console.log('🔧 NODE_ENV:', process.env.NODE_ENV);
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
