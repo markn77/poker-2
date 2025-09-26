@@ -14,7 +14,7 @@ RUN cd server && npm install
 COPY . .
 
 # Expose the port your server runs on
-EXPOSE 3000
+EXPOSE 3001
 
 # Start the server (only runs during start phase, not build)
 CMD ["sh", "-c", "cd server && node server.js"]
