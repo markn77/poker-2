@@ -16,7 +16,7 @@ const pool = new Pool({
     password: process.env.DB_PASSWORD,
     port: parseInt(process.env.DB_PORT),
     ssl: { rejectUnauthorized: false },  // Required for Railway public Postgres
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 10000,
 });
 
 // Test the connection
