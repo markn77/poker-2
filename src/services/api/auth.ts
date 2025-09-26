@@ -1,8 +1,9 @@
 // src/services/api/auth.ts
 import { LoginCredentials, RegisterCredentials, User } from '../../types/auth';
 
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://your-backend.railway.app' 
+// Use a relative base URL in production (same origin), keep localhost for dev
+const API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? ''                     // relative — `/api/...` will hit the same origin that served the page
   : 'http://localhost:3001';
 
 export interface AuthResponse {
