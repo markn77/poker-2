@@ -3,6 +3,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
+    "buildCommand": "cd server && npm install",
     "startCommand": "cd server && node server.js"
   }
 }
