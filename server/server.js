@@ -103,10 +103,9 @@ app.use((error, req, res, next) => {
 });
 
 // React catch-all handler - MUST BE LAST
-app.get('*', (req, res) => {
+app.get('/*', (req, res) => {
   res.sendFile(path.join(__dirname, '../build/index.html'));
 });
-
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, '0.0.0.0', () => {
