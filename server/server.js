@@ -6,7 +6,7 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const tableRoutes = require('./routes/tables');
-const pool = require('./database'); // your DB connection
+const pool = require('./config/database'); // your DB connection
 const TableService = require('./services/tableService');
 
 const app = express();
