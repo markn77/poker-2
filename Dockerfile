@@ -2,20 +2,19 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy root package files and install dependencies
+# Copy and install root dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy server package files and install server dependencies
+# Copy and install server dependencies
 COPY server/package*.json ./server/
-RUN cd server && npm install
+RUN npm install --prefix ./server
 
 # Copy all application code
 COPY . .
 
-# Expose the port your server runs on
+# Change to server directory and start
+WORKDIR /app/server
 EXPOSE 3001
 
-# Start the server (only runs during start phase, not build)
-WORKDIR /app/server
 CMD ["node", "server.js"]
