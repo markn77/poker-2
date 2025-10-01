@@ -76,8 +76,8 @@ app.use((error, req, res, next) => {
   res.status(500).json({ success: false, error: message });
 });
 
-// React catch-all - must be LAST
-app.get('*', (req, res) => {
+// React catch-all - must be LAST (use middleware, not route)
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../build/index.html'));
 });
 
