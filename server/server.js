@@ -6,33 +6,19 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const tableRoutes = require('./routes/tables');
-const pool = require('./config/database'); // your DB connection
+const pool = require('./config/database');
 const TableService = require('./services/tableService');
 
 const app = express();
 
-// Security middleware
+// Security middleware - CSP disabled to allow React app to load
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
-    },
-  },
+  contentSecurityPolicy: false
 }));
 
-// Serve React static files
-app.use(express.static(path.join(__dirname, '../build')));
-
-// CORS
+// CORS - allow all origins since frontend is served from same domain
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? 'https://your-frontend-service.railway.app'
-    : 'http://localhost:3000',
+  origin: true,
   credentials: true
 }));
 
@@ -78,6 +64,9 @@ app.get('/api', (req, res) => {
   });
 });
 
+// Serve React static files - AFTER API routes
+app.use(express.static(path.join(__dirname, '../build')));
+
 // Global error handler
 app.use((error, req, res, next) => {
   console.error('Unhandled error:', error);
@@ -87,8 +76,8 @@ app.use((error, req, res, next) => {
   res.status(500).json({ success: false, error: message });
 });
 
-// React catch-all
-app.use((req, res) => {
+// React catch-all - must be LAST
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../build/index.html'));
 });
 
